@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis rifas | RifaMaster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a href="dashboard.html" class="nav__brand"><span class="dot">●</span> RifaMaster</a>
+  <div class="nav__links">
+    <span id="userName" style="opacity:.7; font-size:14px;"></span>
+    <a href="#" id="logoutBtn" class="btn btn--ghost btn--sm">Cerrar sesión</a>
+  </div>
+</nav>
+
+<main class="container">
+  <div class="dash-header">
+    <div>
+      <h2 style="margin-bottom:2px;">Mis rifas</h2>
+      <p style="margin:0; font-size:14px;">Crea, publica y gestiona tus sorteos.</p>
+    </div>
+    <a href="raffle-form.html" class="btn btn--primary">+ Nueva rifa</a>
+  </div>
+
+  <div id="content"><p class="spinner-text">Cargando tus rifas...</p></div>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+Auth.requireAuthOrRedirect();
+document.getElementById("userName").textContent = Auth.getUser()?.name || "";
+
+document.getElementById("logoutBtn").addEventListener("click", (e) => {
+  e.preventDefault();
+  Auth.clear();
+  window.location.href = "login.html";
+});
+
+const statusLabel = { draft: "Borrador", published: "Publicada", closed: "Ventas cerradas", drawn: "Sorteada" };
+
+async function loadRaffles() {
+  const content = document.getElementById("content");
+  try {
+    const { raffles } = await api("/raffles/mine", { auth: true });
+
+    if (raffles.length === 0) {
+      content.innerHTML = `
+        <div class="empty-state">
+          <h3>Aún no tienes rifas</h3>
+          <p>Crea la primera y comparte el link con tus participantes.</p>
+          <a href="raffle-form.html" class="btn btn--primary" style="margin-top:10px;">Crear mi primera rifa</a>
+        </div>`;
+      return;
+    }
+
+    content.innerHTML = `<div class="raffle-grid">${raffles.map(r => `
+      <a class="raffle-card" href="raffle-admin.html?id=${r.id}">
+        <div class="raffle-card__banner" style="${r.bannerUrl ? `background-image:url('${r.bannerUrl}')` : ""}"></div>
+        <div class="raffle-card__body">
+          <span class="badge badge--${r.status}">${statusLabel[r.status]}</span>
+          <h3>${r.title}</h3>
+          <div class="meta">${r.ticketCount} números · ${formatMoney(r.pricePerTicket, r.currency)} c/u</div>
+          <p style="font-size:13px; margin:0;">🏆 ${r.prize}</p>
+        </div>
+      </a>
+    `).join("")}</div>`;
+  } catch (err) {
+    showError(content, err.message);
+  }
+}
+
+loadRaffles();
+</script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nueva rifa | RifaMaster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a href="dashboard.html" class="nav__brand"><span class="dot">●</span> RifaMaster</a>
+  <div class="nav__links"><a href="dashboard.html" class="btn btn--ghost btn--sm">Volver</a></div>
+</nav>
+
+<main class="container" style="max-width:640px;">
+  <h2 id="formTitle">Nueva rifa</h2>
+  <p style="font-size:14px;">Completa los datos de tu rifa. Podrás publicarla desde el panel una vez creada.</p>
+
+  <div id="msg"></div>
+
+  <form id="raffleForm" class="card">
+    <div class="field">
+      <label for="title">Título de la rifa</label>
+      <input id="title" type="text" placeholder="Ej: Rifa de la nevera" required>
+    </div>
+    <div class="field">
+      <label for="description">Descripción (opcional)</label>
+      <textarea id="description" rows="3" placeholder="Cuéntale a tus participantes de qué se trata"></textarea>
+    </div>
+    <div class="field">
+      <label for="bannerUrl">URL de una imagen del premio (opcional)</label>
+      <input id="bannerUrl" type="url" placeholder="https://...">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="prize">Premio</label>
+        <input id="prize" type="text" placeholder="Ej: Nevera 300L" required>
+      </div>
+      <div class="field">
+        <label for="prizeValue">Valor aprox. del premio</label>
+        <input id="prizeValue" type="number" min="0" placeholder="1500000">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="ticketCount">Cantidad de números</label>
+        <select id="ticketCount">
+          <option value="100">100 (00-99)</option>
+          <option value="1000" selected>1.000 (000-999)</option>
+          <option value="10000">10.000 (0000-9999)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="pricePerTicket">Precio por número (COP)</label>
+        <input id="pricePerTicket" type="number" min="0" placeholder="10000" required>
+      </div>
+    </div>
+    <div class="field">
+      <label for="drawDate">Fecha estimada del sorteo (opcional)</label>
+      <input id="drawDate" type="date">
+    </div>
+
+    <div class="field">
+      <label>Métodos de pago</label>
+      <div id="pmList" class="pm-list"></div>
+      <button type="button" id="addPm" class="btn btn--ghost btn--sm">+ Agregar método de pago</button>
+    </div>
+
+    <button type="submit" class="btn btn--primary" style="width:100%; margin-top:10px;" id="submitBtn">Guardar rifa</button>
+  </form>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+Auth.requireAuthOrRedirect();
+
+const params = new URLSearchParams(window.location.search);
+const editId = params.get("id");
+const pmList = document.getElementById("pmList");
+
+function addPaymentMethodRow(pm = {}) {
+  const row = document.createElement("div");
+  row.className = "pm-item";
+  row.innerHTML = `
+    <select class="pm-type" style="flex:0 0 120px; margin-right:8px;">
+      <option value="nequi" ${pm.type === "nequi" ? "selected" : ""}>Nequi</option>
+      <option value="daviplata" ${pm.type === "daviplata" ? "selected" : ""}>Daviplata</option>
+      <option value="bancolombia" ${pm.type === "bancolombia" ? "selected" : ""}>Bancolombia</option>
+      <option value="efectivo" ${pm.type === "efectivo" ? "selected" : ""}>Efectivo</option>
+      <option value="otro" ${pm.type === "otro" ? "selected" : ""}>Otro</option>
+    </select>
+    <input class="pm-number" placeholder="Número / cuenta" value="${pm.numberOrAccount || ""}" style="flex:1; margin-right:8px;">
+    <input class="pm-holder" placeholder="A nombre de" value="${pm.holderName || ""}" style="flex:1; margin-right:8px;">
+    <button type="button" class="btn btn--danger btn--sm remove-pm">✕</button>
+  `;
+  row.querySelector(".remove-pm").addEventListener("click", () => row.remove());
+  pmList.appendChild(row);
+}
+
+document.getElementById("addPm").addEventListener("click", () => addPaymentMethodRow());
+addPaymentMethodRow({ type: "nequi" });
+
+function collectPaymentMethods() {
+  return [...pmList.querySelectorAll(".pm-item")].map((row) => ({
+    type: row.querySelector(".pm-type").value,
+    numberOrAccount: row.querySelector(".pm-number").value,
+    holderName: row.querySelector(".pm-holder").value,
+  })).filter((pm) => pm.numberOrAccount);
+}
+
+async function loadForEdit() {
+  if (!editId) return;
+  document.getElementById("formTitle").textContent = "Editar rifa";
+  try {
+    const { raffle } = await api(`/raffles/mine/${editId}`, { auth: true });
+    document.getElementById("title").value = raffle.title;
+    document.getElementById("description").value = raffle.description || "";
+    document.getElementById("bannerUrl").value = raffle.bannerUrl || "";
+    document.getElementById("prize").value = raffle.prize;
+    document.getElementById("prizeValue").value = raffle.prizeValue || "";
+    document.getElementById("ticketCount").value = raffle.ticketCount;
+    document.getElementById("pricePerTicket").value = raffle.pricePerTicket;
+    if (raffle.drawDate) document.getElementById("drawDate").value = raffle.drawDate.slice(0, 10);
+    pmList.innerHTML = "";
+    (raffle.paymentMethods.length ? raffle.paymentMethods : [{ type: "nequi" }]).forEach(addPaymentMethodRow);
+  } catch (err) {
+    showError(document.getElementById("msg"), err.message);
+  }
+}
+loadForEdit();
+
+document.getElementById("raffleForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("submitBtn");
+  msg.innerHTML = "";
+  btn.disabled = true;
+  btn.textContent = "Guardando...";
+
+  const payload = {
+    title: document.getElementById("title").value,
+    description: document.getElementById("description").value,
+    bannerUrl: document.getElementById("bannerUrl").value,
+    prize: document.getElementById("prize").value,
+    prizeValue: Number(document.getElementById("prizeValue").value) || 0,
+    ticketCount: Number(document.getElementById("ticketCount").value),
+    pricePerTicket: Number(document.getElementById("pricePerTicket").value),
+    drawDate: document.getElementById("drawDate").value || null,
+    paymentMethods: collectPaymentMethods(),
+  };
+
+  try {
+    const data = editId
+      ? await api(`/raffles/mine/${editId}`, { method: "PUT", body: payload, auth: true })
+      : await api("/raffles", { method: "POST", body: payload, auth: true });
+    window.location.href = `raffle-admin.html?id=${data.raffle.id}`;
+  } catch (err) {
+    showError(msg, err.message);
+    btn.disabled = false;
+    btn.textContent = "Guardar rifa";
+  }
+});
+</script>
+</body>
+</html>

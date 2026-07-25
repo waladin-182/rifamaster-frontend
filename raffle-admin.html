@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestionar rifa | RifaMaster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a href="dashboard.html" class="nav__brand"><span class="dot">●</span> RifaMaster</a>
+  <div class="nav__links"><a href="dashboard.html" class="btn btn--ghost btn--sm">Volver</a></div>
+</nav>
+
+<main class="container">
+  <div id="content"><p class="spinner-text">Cargando rifa...</p></div>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+Auth.requireAuthOrRedirect();
+const params = new URLSearchParams(window.location.search);
+const raffleId = params.get("id");
+const content = document.getElementById("content");
+const statusLabel = { draft: "Borrador", published: "Publicada", closed: "Ventas cerradas", drawn: "Sorteada" };
+
+let currentFilter = "";
+
+async function load() {
+  try {
+    const { raffle, stats } = await api(`/raffles/mine/${raffleId}`, { auth: true });
+    const statsMap = Object.fromEntries((stats || []).map(s => [s._id, s.count]));
+    const publicUrl = `r.html?slug=${raffle.slug}`;
+
+    content.innerHTML = `
+      <div class="dash-header">
+        <div>
+          <span class="badge badge--${raffle.status}">${statusLabel[raffle.status]}</span>
+          <h2 style="margin:6px 0 2px;">${raffle.title}</h2>
+          <p style="margin:0; font-size:14px;">🏆 ${raffle.prize} · ${raffle.ticketCount} números · ${formatMoney(raffle.pricePerTicket, raffle.currency)} c/u</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          ${raffle.status === "draft" ? `<a href="raffle-form.html?id=${raffle.id}" class="btn btn--ghost btn--sm">Editar</a>` : ""}
+          ${raffle.status === "draft" ? `<button class="btn btn--primary btn--sm" id="publishBtn">Publicar rifa</button>` : ""}
+          ${raffle.status === "published" ? `<button class="btn btn--gold btn--sm" id="closeBtn">Cerrar ventas</button>` : ""}
+          ${raffle.status === "closed" ? `<button class="btn btn--primary btn--sm" id="drawBtn">🎲 Sortear ganador</button>` : ""}
+        </div>
+      </div>
+
+      <div id="actionMsg"></div>
+
+      ${raffle.status !== "draft" ? `
+        <div class="card" style="margin-bottom:20px;">
+          <label style="font-size:13px; opacity:.7;">Link para tus participantes</label>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <input readonly value="${publicUrl}" id="shareLink" style="flex:1; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:rgba(251,247,238,.06); color:var(--cream); font-family:var(--font-mono); font-size:13px;">
+            <a href="${publicUrl}" target="_blank" class="btn btn--ghost btn--sm">Ver página</a>
+          </div>
+        </div>` : `
+        <div class="card" style="margin-bottom:20px;">
+          <p style="margin:0;">Esta rifa está en borrador. Publícala para generar el talonario de ${raffle.ticketCount} números y obtener el link para compartir.</p>
+        </div>`}
+
+      ${raffle.status === "drawn" ? `
+        <div class="card" style="margin-bottom:20px; border-color: var(--gold);">
+          <h3 style="margin-bottom:4px;">🎉 Número ganador: <span style="color:var(--gold); font-family:var(--font-mono);">${raffle.winningTicket}</span></h3>
+          <p style="margin:0; font-size:13px;">Sorteado el ${new Date(raffle.drawnAt).toLocaleString("es-CO")}</p>
+        </div>` : ""}
+
+      ${raffle.status !== "draft" ? `
+        <h3>Tickets</h3>
+        <div class="filters">
+          <button data-f="" class="active">Todos (${Object.values(statsMap).reduce((a,b)=>a+b,0)})</button>
+          <button data-f="available">Disponibles (${statsMap.available || 0})</button>
+          <button data-f="reserved">Reservados (${statsMap.reserved || 0})</button>
+          <button data-f="confirmed">Confirmados (${statsMap.confirmed || 0})</button>
+          <button data-f="winner">Ganador (${statsMap.winner || 0})</button>
+        </div>
+        <div id="ticketsWrap"><p class="spinner-text">Cargando tickets...</p></div>
+      ` : ""}
+    `;
+
+    document.getElementById("publishBtn")?.addEventListener("click", () => runAction(`/raffles/mine/${raffle.id}/publish`, "Rifa publicada. ¡Ya puedes compartir el link!"));
+    document.getElementById("closeBtn")?.addEventListener("click", () => runAction(`/raffles/mine/${raffle.id}/close`, "Ventas cerradas. Ya puedes sortear el ganador."));
+    document.getElementById("drawBtn")?.addEventListener("click", () => runDraw(raffle.id));
+
+    document.querySelectorAll(".filters button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentFilter = btn.dataset.f;
+        loadTickets(raffle.id);
+      });
+    });
+
+    if (raffle.status !== "draft") loadTickets(raffle.id);
+  } catch (err) {
+    showError(content, err.message);
+  }
+}
+
+async function runAction(path, successMsg) {
+  const msg = document.getElementById("actionMsg");
+  try {
+    await api(path, { method: "POST", auth: true });
+    showSuccess(msg, successMsg);
+    load();
+  } catch (err) {
+    showError(msg, err.message);
+  }
+}
+
+async function runDraw(id) {
+  if (!confirm("¿Sortear el número ganador ahora? Esta acción no se puede deshacer.")) return;
+  const msg = document.getElementById("actionMsg");
+  try {
+    const data = await api(`/raffles/mine/${id}/draw`, { method: "POST", auth: true });
+    showSuccess(msg, `🎉 El número ganador es ${data.winner.number} (${data.winner.buyer?.name || "sin datos"})`);
+    load();
+  } catch (err) {
+    showError(msg, err.message);
+  }
+}
+
+async function loadTickets(id) {
+  const wrap = document.getElementById("ticketsWrap");
+  if (!wrap) return;
+  try {
+    const query = currentFilter ? `?status=${currentFilter}` : "";
+    const { tickets } = await api(`/tickets/mine/${id}${query}`, { auth: true });
+
+    if (tickets.length === 0) {
+      wrap.innerHTML = `<p class="hint">No hay tickets en este filtro.</p>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <table class="tickets-table">
+        <thead><tr><th>#</th><th>Estado</th><th>Comprador</th><th>Teléfono</th><th>Pago</th><th>Comprobante</th><th></th></tr></thead>
+        <tbody>
+          ${tickets.map(t => `
+            <tr>
+              <td style="font-family:var(--font-mono);">${t.number}</td>
+              <td><span class="badge badge--${t.status === 'confirmed' ? 'published' : t.status === 'reserved' ? 'closed' : t.status === 'winner' ? 'drawn' : 'draft'}">${t.status}</span></td>
+              <td>${t.buyer?.name || "—"}</td>
+              <td>${t.buyer?.phone || "—"}</td>
+              <td>${t.paymentMethod || "—"}</td>
+              <td>${t.paymentProof ? `<a href="#" class="view-proof" data-src="${t.paymentProof}">Ver imagen</a>` : "—"}</td>
+              <td style="white-space:nowrap;">
+                ${t.status === "reserved" ? `<button class="btn btn--gold btn--sm confirm-btn" data-tid="${t._id}">Confirmar pago</button>` : ""}
+                ${(t.status === "reserved" || t.status === "confirmed") ? `<button class="btn btn--danger btn--sm release-btn" data-tid="${t._id}">Liberar</button>` : ""}
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    wrap.querySelectorAll(".confirm-btn").forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/tickets/mine/${id}/${btn.dataset.tid}/confirm`, { method: "POST", auth: true });
+      load();
+    }));
+    wrap.querySelectorAll(".release-btn").forEach(btn => btn.addEventListener("click", async () => {
+      if (!confirm("¿Liberar este número? Volverá a estar disponible.")) return;
+      await api(`/tickets/mine/${id}/${btn.dataset.tid}/release`, { method: "POST", auth: true });
+      load();
+    }));
+    wrap.querySelectorAll(".view-proof").forEach(link => link.addEventListener("click", (e) => {
+      e.preventDefault();
+      const backdrop = document.createElement("div");
+      backdrop.className = "modal-backdrop";
+      backdrop.innerHTML = `
+        <div class="modal" style="text-align:center;">
+          <img src="${link.dataset.src}" alt="Comprobante de pago" style="width:100%; border-radius:10px; margin-bottom:14px;">
+          <button class="btn btn--ghost" style="width:100%;" id="closeProofBtn">Cerrar</button>
+        </div>`;
+      backdrop.addEventListener("click", (ev) => { if (ev.target === backdrop) backdrop.remove(); });
+      backdrop.querySelector("#closeProofBtn").addEventListener("click", () => backdrop.remove());
+      document.body.appendChild(backdrop);
+    }));
+  } catch (err) {
+    showError(wrap, err.message);
+  }
+}
+
+load();
+</script>
+</body>
+</html>
