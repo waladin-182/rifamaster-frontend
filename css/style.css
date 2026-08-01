@@ -271,7 +271,7 @@ p { line-height: 1.6; color: var(--cream); opacity: 0.9; }
 
 /* ---------- Auth pages ---------- */
 .auth-wrap {
-  min-height: 100vh;
+  min-height: calc(100vh - 80px);
   display: flex;
   align-items: center;
   justify-content: center;
