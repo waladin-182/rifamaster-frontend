@@ -59,16 +59,34 @@ async function loadRaffles() {
     }
 
     content.innerHTML = `<div class="raffle-grid">${raffles.map(r => `
-      <a class="raffle-card" href="raffle-admin.html?id=${r.id}">
-        <div class="raffle-card__banner" style="${r.bannerUrl ? `background-image:url('${r.bannerUrl}')` : ""}"></div>
-        <div class="raffle-card__body">
-          <span class="badge badge--${r.status}">${statusLabel[r.status]}</span>
-          <h3>${r.title}</h3>
-          <div class="meta">${r.ticketCount} números · ${formatMoney(r.pricePerTicket, r.currency)} c/u</div>
-          <p style="font-size:13px; margin:0;">🏆 ${r.prize}</p>
-        </div>
-      </a>
+      <div class="raffle-card" style="position:relative;">
+        <button class="btn btn--danger btn--sm delete-raffle" data-id="${r.id}" data-title="${r.title}" title="Eliminar rifa" style="position:absolute; top:10px; right:10px; z-index:2; background:rgba(16,35,31,.75); color:#ffb4ab; border-color:rgba(232,87,75,.5);">✕</button>
+        <a href="raffle-admin.html?id=${r.id}" style="text-decoration:none; color:inherit; display:block;">
+          <div class="raffle-card__banner" style="${r.bannerUrl ? `background-image:url('${r.bannerUrl}')` : ""}"></div>
+          <div class="raffle-card__body">
+            <span class="badge badge--${r.status}">${statusLabel[r.status]}</span>
+            <h3>${r.title}</h3>
+            <div class="meta">${r.ticketCount} números · ${formatMoney(r.pricePerTicket, r.currency)} c/u</div>
+            <p style="font-size:13px; margin:0;">🏆 ${r.prize}</p>
+          </div>
+        </a>
+      </div>
     `).join("")}</div>`;
+
+    document.querySelectorAll(".delete-raffle").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const title = btn.dataset.title;
+        if (!confirm(`¿Eliminar la rifa "${title}"? Esto borrará también todos sus tickets y no se puede deshacer.`)) return;
+        try {
+          await api(`/raffles/mine/${btn.dataset.id}`, { method: "DELETE", auth: true });
+          loadRaffles();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    });
   } catch (err) {
     showError(content, err.message);
   }
