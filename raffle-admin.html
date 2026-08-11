@@ -47,6 +47,7 @@ async function load() {
           ${raffle.status === "draft" ? `<button class="btn btn--primary btn--sm" id="publishBtn">Publicar rifa</button>` : ""}
           ${raffle.status === "published" ? `<button class="btn btn--gold btn--sm" id="closeBtn">Cerrar ventas</button>` : ""}
           ${raffle.status === "closed" ? `<button class="btn btn--primary btn--sm" id="drawBtn">🎲 Sortear ganador</button>` : ""}
+          <button class="btn btn--danger btn--sm" id="deleteBtn">Eliminar rifa</button>
         </div>
       </div>
 
@@ -86,6 +87,7 @@ async function load() {
     document.getElementById("publishBtn")?.addEventListener("click", () => runAction(`/raffles/mine/${raffle.id}/publish`, "Rifa publicada. ¡Ya puedes compartir el link!"));
     document.getElementById("closeBtn")?.addEventListener("click", () => runAction(`/raffles/mine/${raffle.id}/close`, "Ventas cerradas. Ya puedes sortear el ganador."));
     document.getElementById("drawBtn")?.addEventListener("click", () => runDraw(raffle.id));
+    document.getElementById("deleteBtn")?.addEventListener("click", () => deleteRaffle(raffle));
 
     document.querySelectorAll(".filters button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -122,6 +124,20 @@ async function runDraw(id) {
     load();
   } catch (err) {
     showError(msg, err.message);
+  }
+}
+
+async function deleteRaffle(raffle) {
+  const extraWarning = raffle.status !== "draft"
+    ? " Esta rifa ya tiene participantes: también se borrarán sus tickets, datos de compradores y comprobantes."
+    : "";
+  if (!confirm(`¿Eliminar la rifa "${raffle.title}"?${extraWarning} Esta acción no se puede deshacer.`)) return;
+
+  try {
+    await api(`/raffles/mine/${raffle.id}`, { method: "DELETE", auth: true });
+    window.location.href = "dashboard.html";
+  } catch (err) {
+    showError(document.getElementById("actionMsg"), err.message);
   }
 }
 
